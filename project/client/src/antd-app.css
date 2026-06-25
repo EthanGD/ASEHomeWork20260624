@@ -1,0 +1,78 @@
+:root {
+  background: #f5f7fb;
+  color: #1f2937;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7fb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.boot-screen,
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(22, 119, 255, 0.12), transparent 34%),
+    #f5f7fb;
+}
+
+.login-card {
+  width: min(560px, 100%);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+}
+
+.app-layout {
+  min-height: 100vh;
+}
+
+.sider-brand {
+  padding: 20px 16px 12px;
+}
+
+.sider-footer {
+  padding: 16px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  padding: 16px 24px;
+  height: auto;
+  line-height: normal;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.app-content {
+  padding: 24px;
+}
+
+.calendar-cell {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding-top: 4px;
+}
+
+.calendar-tag {
+  margin-inline-end: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 992px) {
+  .app-content {
+    padding: 16px;
+  }
+}
