@@ -12,6 +12,10 @@ import {
   buildWechatAuthUrl,
   signWechatState
 } from "../services/wechat.js";
+import {
+  createPasskeyRegisterOptions,
+  verifyAndBindPasskey
+} from "../services/passkey.js";
 import { sendError } from "../utils/http.js";
 
 export const createAccountRouter = () => {
@@ -106,6 +110,30 @@ export const createAccountRouter = () => {
     await unbindGithubFromUser(user.id);
     response.json({ success: true });
   });
+
+  router.post(
+    "/passkey/register/options",
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const user = request.user!;
+      response.json(await createPasskeyRegisterOptions(user.id, user.username, request.headers.origin));
+    }
+  );
+
+  router.post(
+    "/passkey/register/verify",
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const user = request.user!;
+      try {
+        const result = await verifyAndBindPasskey(user.id, (request.body as { credential?: unknown }).credential);
+        response.json({ success: true, ...result });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "绑定指纹登录失败";
+        sendError(response, 400, message);
+      }
+    }
+  );
 
   return router;
 };

@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { query } from "../db.js";
 import { dbgWrite } from "../services/debug.js";
 import { bindGithubToUser, buildGithubBindRedirect, buildGithubAuthUrl, buildGithubLoginRedirect, exchangeGithubCode, fetchGithubIdentityUserId, fetchGithubUser, getMockGithubProfile, parseGithubState, signGithubState } from "../services/github.js";
+import { createPasskeyLoginOptions, verifyPasskeyLogin } from "../services/passkey.js";
 import { bindWechatToUser, buildWechatAuthUrl, buildWechatBindRedirect, buildWechatRedirect, createWechatUserAndRedirect, getMockWechatProfile, parseWechatState, signWechatState } from "../services/wechat.js";
 import { sanitizeUser, sendError } from "../utils/http.js";
 export const createAuthRouter = () => {
@@ -69,6 +70,24 @@ export const createAuthRouter = () => {
     });
     router.get("/me", requireAuth, async (request, response) => {
         response.json({ user: request.user });
+    });
+    router.post("/passkey/options", async (_request, response) => {
+        response.json(await createPasskeyLoginOptions(_request.headers.origin));
+    });
+    router.post("/passkey/verify", async (request, response) => {
+        try {
+            const { userId } = await verifyPasskeyLogin(request.body.credential);
+            const sessionUser = await fetchSessionUser(userId);
+            if (!sessionUser) {
+                sendError(response, 401, "用户不存在或已被禁用");
+                return;
+            }
+            response.json(sanitizeUser(sessionUser, signToken(userId)));
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "指纹登录失败";
+            sendError(response, 400, message);
+        }
     });
     router.get("/wechat/url", async (_request, response) => {
         const state = signWechatState({ action: "login" });

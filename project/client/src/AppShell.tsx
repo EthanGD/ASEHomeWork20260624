@@ -34,6 +34,7 @@ import {
   GithubOutlined,
   LogoutOutlined,
   PlusOutlined,
+  SafetyOutlined,
   SettingOutlined,
   SolutionOutlined,
   SoundOutlined,
@@ -413,6 +414,159 @@ function AppShellInner() {
       window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`;
     } catch (error) {
       message.error(error instanceof Error ? error.message : "无法发起 GitHub 登录");
+    }
+  };
+
+  const toBase64Url = (bytes: Uint8Array) => {
+    let binary = "";
+    bytes.forEach((b) => {
+      binary += String.fromCharCode(b);
+    });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  };
+
+  const fromBase64Url = (input: string) => {
+    const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
+    const raw = atob(padded);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) {
+      out[i] = raw.charCodeAt(i);
+    }
+    return out;
+  };
+
+  const credentialToJson = (credential: PublicKeyCredential) => {
+    const response = credential.response as AuthenticatorResponse;
+    const base = {
+      id: credential.id,
+      type: credential.type,
+      rawId: toBase64Url(new Uint8Array(credential.rawId))
+    };
+
+    if ("attestationObject" in response) {
+      const att = response as AuthenticatorAttestationResponse;
+      return {
+        ...base,
+        response: {
+          clientDataJSON: toBase64Url(new Uint8Array(att.clientDataJSON)),
+          attestationObject: toBase64Url(new Uint8Array(att.attestationObject))
+        }
+      };
+    }
+
+    const ass = response as AuthenticatorAssertionResponse;
+    return {
+      ...base,
+      response: {
+        clientDataJSON: toBase64Url(new Uint8Array(ass.clientDataJSON)),
+        authenticatorData: toBase64Url(new Uint8Array(ass.authenticatorData)),
+        signature: toBase64Url(new Uint8Array(ass.signature)),
+        userHandle: ass.userHandle ? toBase64Url(new Uint8Array(ass.userHandle)) : null
+      }
+    };
+  };
+
+  const handlePasskeyLogin = async () => {
+    if (!window.isSecureContext) {
+      message.error(`指纹登录需要 HTTPS 安全上下文（当前：${window.location.origin}）`);
+      return;
+    }
+
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      message.error("当前浏览器不支持指纹登录，请使用其他方式登录");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await api.getPasskeyLoginOptions();
+      const options = result.publicKey as {
+        challenge: string;
+        rpId?: string;
+        timeout?: number;
+        userVerification?: PublicKeyCredentialUserVerificationRequirement;
+        allowCredentials?: { type: PublicKeyCredentialType; id: string }[];
+      };
+
+      const publicKey: PublicKeyCredentialRequestOptions = {
+        ...options,
+        challenge: fromBase64Url(options.challenge).buffer,
+        allowCredentials: options.allowCredentials?.map((cred) => ({
+          type: cred.type,
+          id: fromBase64Url(cred.id).buffer
+        }))
+      };
+
+      const cred = (await navigator.credentials.get({
+        publicKey
+      })) as PublicKeyCredential | null;
+
+      if (!cred) {
+        throw new Error("未获取到指纹凭证");
+      }
+
+      const loginResult = await api.verifyPasskeyLogin({ credential: credentialToJson(cred) });
+      setToken(loginResult.token);
+      setCurrentUser(loginResult.user);
+      await refreshData(loginResult.user);
+      message.success(`欢迎回来，${loginResult.user.displayName}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "指纹登录失败");
+    } finally {
+      setSubmitting(false);
+      setBooting(false);
+    }
+  };
+
+  const handlePasskeyBind = async () => {
+    if (!window.isSecureContext) {
+      message.error(`绑定指纹登录需要 HTTPS 安全上下文（当前：${window.location.origin}）`);
+      return;
+    }
+
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      message.error("当前浏览器不支持指纹绑定，请使用其他方式登录");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const optionsResult = await api.getPasskeyRegisterOptions();
+      const options = optionsResult.publicKey as {
+        challenge: string;
+        rp: { name: string; id?: string };
+        user: { id: string; name: string; displayName: string };
+        pubKeyCredParams: { type: PublicKeyCredentialType; alg: number }[];
+        timeout?: number;
+        attestation?: AttestationConveyancePreference;
+        authenticatorSelection?: AuthenticatorSelectionCriteria;
+      };
+
+      const publicKey: PublicKeyCredentialCreationOptions = {
+        ...options,
+        challenge: fromBase64Url(options.challenge).buffer,
+        user: {
+          ...options.user,
+          id: fromBase64Url(options.user.id).buffer
+        }
+      };
+
+      const cred = (await navigator.credentials.create({
+        publicKey
+      })) as PublicKeyCredential | null;
+
+      if (!cred) {
+        throw new Error("未创建指纹凭证");
+      }
+
+      await api.verifyPasskeyRegister({ credential: credentialToJson(cred) });
+      const user = await syncCurrentUser();
+      await refreshData(user);
+      message.success("指纹登录绑定成功");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "绑定指纹登录失败");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1002,6 +1156,13 @@ function AppShellInner() {
                 >
                   GitHub oidc sso 登录
                 </Button>
+                <Button
+                  icon={<SafetyOutlined />}
+                  block
+                  onClick={() => void handlePasskeyLogin()}
+                >
+                  手机指纹验证登录
+                </Button>
               </Space>
             </Form>
 
@@ -1239,6 +1400,23 @@ function AppShellInner() {
                           解除 GitHub 绑定
                         </Button>
                       ) : null}
+                    </Space>
+                  </Space>
+                </Card>
+
+                <Card title="手机指纹登录绑定">
+                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                    <Text>
+                      绑定后，可以在登录页使用手机指纹/人脸验证完成登录（需要浏览器支持 WebAuthn / Passkey）。
+                    </Text>
+                    <Space wrap>
+                      <Button
+                        type="primary"
+                        icon={<SafetyOutlined />}
+                        onClick={() => void handlePasskeyBind()}
+                      >
+                        绑定指纹登录
+                      </Button>
                     </Space>
                   </Space>
                 </Card>

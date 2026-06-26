@@ -95,6 +95,13 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   getAccount: () => request<{ user: SessionUser }>("/api/account"),
+  getPasskeyRegisterOptions: () =>
+    request<{ publicKey: unknown }>("/api/account/passkey/register/options", { method: "POST" }),
+  verifyPasskeyRegister: (payload: { credential: unknown }) =>
+    request<{ success: boolean; credentialId: string }>("/api/account/passkey/register/verify", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   getWechatBindUrl: () =>
     request<{ mode: "mock" | "real"; url: string }>("/api/account/wechat/bind/url"),
   unbindWechat: () =>
@@ -112,6 +119,13 @@ export const api = {
   me: () => request<{ user: SessionUser }>("/api/auth/me"),
   getWechatUrl: () => request<{ mode: "mock" | "real"; url: string }>("/api/auth/wechat/url"),
   getGithubUrl: () => request<{ mode: "mock" | "real"; url: string }>("/api/auth/github/url"),
+  getPasskeyLoginOptions: () =>
+    request<{ publicKey: unknown }>("/api/auth/passkey/options", { method: "POST" }),
+  verifyPasskeyLogin: (payload: { credential: unknown }) =>
+    request<LoginResponse>("/api/auth/passkey/verify", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   getDashboard: () => request<DashboardSummary>("/api/dashboard"),
   getTasks: (params?: URLSearchParams) =>
     request<TaskRecord[]>(`/api/tasks${params ? `?${params.toString()}` : ""}`),

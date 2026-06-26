@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS webauthn_credentials;
+DROP TABLE IF EXISTS oauth_identities;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS system_settings;
 DROP TABLE IF EXISTS users;
