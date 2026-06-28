@@ -8,7 +8,11 @@ const proxy = fs.existsSync(proxyConfigPath)
     : {};
 export default defineConfig({
     plugins: [react()],
-    server: {
-        proxy
-    }
+  server: {
+    host: "0.0.0.0",
+    port: Number(process.env.VITE_PORT) || 5175,
+    strictPort: true,
+    allowedHosts: ["task.ethanchenyansong.dedyn.io"],
+    proxy
+  }
 });
