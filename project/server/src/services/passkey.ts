@@ -22,6 +22,33 @@ const concatBytes = (a: Uint8Array, b: Uint8Array) => {
 
 const asArrayBuffer = (bytes: Uint8Array): ArrayBuffer => new Uint8Array(bytes).buffer;
 
+const derToRaw = (der: Uint8Array): Uint8Array => {
+  let offset = 0;
+  if (der[offset] !== 0x30) throw new Error("不是合法的 DER 签名");
+  offset++;
+  if (der[offset] < 128) {
+    offset++;
+  } else {
+    const lenBytes = der[offset] & 0x7f;
+    offset += 1 + lenBytes;
+  }
+  const readInt = (): Uint8Array => {
+    if (der[offset] !== 0x02) throw new Error("DER 格式错误");
+    offset++;
+    const len = der[offset];
+    offset++;
+    const val = der.slice(offset, offset + len);
+    offset += len;
+    return val[0] === 0 ? val.slice(1) : val;
+  };
+  const r = readInt();
+  const s = readInt();
+  const raw = new Uint8Array(64);
+  raw.set(r.slice(-32), 32 - Math.min(r.length, 32));
+  raw.set(s.slice(-32), 64 - Math.min(s.length, 32));
+  return raw;
+};
+
 const sha256 = async (input: Uint8Array) => {
   const digest = await crypto.subtle.digest("SHA-256", asArrayBuffer(input));
   return new Uint8Array(digest);
@@ -329,6 +356,40 @@ export const verifyAndBindPasskey = async (userId: number, credential: unknown) 
   return { credentialId };
 };
 
+export const listPasskeys = async (userId: number) => {
+  const result = await query<{
+    id: number;
+    credential_id: string;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `
+      SELECT id, credential_id, created_at, updated_at
+      FROM webauthn_credentials
+      WHERE user_id = $1
+      ORDER BY id DESC
+    `,
+    [userId]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    credentialId: row.credential_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+};
+
+export const deletePasskey = async (userId: number, credentialId: string) => {
+  const result = await query(
+    `
+      DELETE FROM webauthn_credentials
+      WHERE user_id = $1 AND credential_id = $2
+    `,
+    [userId, credentialId]
+  );
+  return (result.rowCount ?? 0) > 0;
+};
+
 export const createPasskeyLoginOptions = async (origin?: string | null) => {
   const normalized = normalizeOrigin(origin);
   const key = `login:${challengeSeed()}`;
@@ -431,10 +492,11 @@ export const verifyPasskeyLogin = async (credential: unknown) => {
 
   const clientHash = await sha256(clientDataRaw);
   const signed = concatBytes(authData, clientHash);
+  const rawSig = derToRaw(signature);
   const verified = await crypto.subtle.verify(
     { name: "ECDSA", hash: "SHA-256" },
     key,
-    asArrayBuffer(signature),
+    asArrayBuffer(rawSig),
     asArrayBuffer(signed)
   );
 

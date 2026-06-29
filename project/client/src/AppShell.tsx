@@ -195,6 +195,7 @@ function AppShellInner() {
   const [userForm] = Form.useForm<UserFormValues>();
   const [roleForm] = Form.useForm<RoleFormValues>();
   const [settingsForm] = Form.useForm<AppSettings>();
+  const [passkeys, setPasskeys] = useState<{ id: number; credentialId: string; createdAt: string; updatedAt: string }[]>([]);
 
   const canUserManage = hasPermission(currentUser, "user:manage");
   const canRoleManage = hasPermission(currentUser, "role:manage");
@@ -562,9 +563,38 @@ function AppShellInner() {
       await api.verifyPasskeyRegister({ credential: credentialToJson(cred) });
       const user = await syncCurrentUser();
       await refreshData(user);
+      await loadPasskeys();
       message.success("指纹登录绑定成功");
     } catch (error) {
       message.error(error instanceof Error ? error.message : "绑定指纹登录失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const loadPasskeys = useCallback(async () => {
+    try {
+      const result = await api.listPasskeys();
+      setPasskeys(result.passkeys);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && activeView === "account") {
+      void loadPasskeys();
+    }
+  }, [activeView, currentUser, loadPasskeys]);
+
+  const handlePasskeyUnbind = async (credentialId: string) => {
+    setSubmitting(true);
+    try {
+      await api.deletePasskey(credentialId);
+      const user = await syncCurrentUser();
+      await refreshData(user);
+      await loadPasskeys();
+      message.success("指纹凭证已解除绑定");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "解除绑定失败");
     } finally {
       setSubmitting(false);
     }
@@ -1339,6 +1369,11 @@ function AppShellInner() {
                         {currentUser.githubBound ? "已绑定" : "未绑定"}
                       </Tag>
                     </Descriptions.Item>
+                    <Descriptions.Item label="指纹登录状态">
+                      <Tag color={currentUser.passkeyBound ? "green" : "default"}>
+                        {currentUser.passkeyBound ? `已绑定 ${currentUser.passkeyCount} 个` : "未绑定"}
+                      </Tag>
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
 
@@ -1409,13 +1444,45 @@ function AppShellInner() {
                     <Text>
                       绑定后，可以在登录页使用手机指纹/人脸验证完成登录（需要浏览器支持 WebAuthn / Passkey）。
                     </Text>
+                    {currentUser.passkeyBound ? (
+                      <Tag color="green">已绑定 {currentUser.passkeyCount} 个指纹凭证</Tag>
+                    ) : (
+                      <Tag color="default">未绑定</Tag>
+                    )}
+                    {passkeys.length > 0 && (
+                      <List
+                        size="small"
+                        bordered
+                        dataSource={passkeys}
+                        renderItem={(item) => (
+                          <List.Item
+                            actions={[
+                              <Button
+                                key="unbind"
+                                type="link"
+                                danger
+                                size="small"
+                                onClick={() => void handlePasskeyUnbind(item.credentialId)}
+                              >
+                                解除绑定
+                              </Button>
+                            ]}
+                          >
+                            <List.Item.Meta
+                              title={`凭证 ${item.credentialId.slice(0, 16)}...`}
+                              description={`绑定时间：${formatDateTime(item.createdAt)}`}
+                            />
+                          </List.Item>
+                        )}
+                      />
+                    )}
                     <Space wrap>
                       <Button
                         type="primary"
                         icon={<SafetyOutlined />}
                         onClick={() => void handlePasskeyBind()}
                       >
-                        绑定指纹登录
+                        {currentUser.passkeyBound ? "重新绑定指纹登录" : "绑定指纹登录"}
                       </Button>
                     </Space>
                   </Space>

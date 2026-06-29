@@ -30,6 +30,8 @@ export interface User {
   authSource: "local" | "wechat";
   wechatBound: boolean;
   githubBound: boolean;
+  passkeyBound: boolean;
+  passkeyCount: number;
   createdAt: string;
 }
 
@@ -69,6 +71,8 @@ export interface SessionUser {
   authSource: "local" | "wechat";
   wechatBound: boolean;
   githubBound: boolean;
+  passkeyBound: boolean;
+  passkeyCount: number;
   roleIds: number[];
   roleNames: string[];
   permissions: Permission[];

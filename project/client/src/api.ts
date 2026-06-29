@@ -102,6 +102,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  listPasskeys: () =>
+    request<{ passkeys: { id: number; credentialId: string; createdAt: string; updatedAt: string }[] }>(
+      "/api/account/passkey/list"
+    ),
+  deletePasskey: (credentialId: string) =>
+    request<{ success: boolean }>(`/api/account/passkey/${encodeURIComponent(credentialId)}`, {
+      method: "DELETE"
+    }),
   getWechatBindUrl: () =>
     request<{ mode: "mock" | "real"; url: string }>("/api/account/wechat/bind/url"),
   unbindWechat: () =>

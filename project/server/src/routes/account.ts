@@ -14,7 +14,9 @@ import {
 } from "../services/wechat.js";
 import {
   createPasskeyRegisterOptions,
-  verifyAndBindPasskey
+  verifyAndBindPasskey,
+  listPasskeys,
+  deletePasskey
 } from "../services/passkey.js";
 import { sendError } from "../utils/http.js";
 
@@ -132,6 +134,31 @@ export const createAccountRouter = () => {
         const message = error instanceof Error ? error.message : "绑定指纹登录失败";
         sendError(response, 400, message);
       }
+    }
+  );
+
+  router.get(
+    "/passkey/list",
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const user = request.user!;
+      const passkeys = await listPasskeys(user.id);
+      response.json({ passkeys });
+    }
+  );
+
+  router.delete(
+    "/passkey/:credentialId",
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const user = request.user!;
+      const { credentialId } = request.params;
+      const deleted = await deletePasskey(user.id, credentialId);
+      if (!deleted) {
+        sendError(response, 404, "指纹凭证不存在");
+        return;
+      }
+      response.json({ success: true });
     }
   );
 

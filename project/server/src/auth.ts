@@ -21,6 +21,8 @@ export interface SessionUser {
   authSource: "local" | "wechat";
   wechatBound: boolean;
   githubBound: boolean;
+  passkeyBound: boolean;
+  passkeyCount: number;
   roleIds: number[];
   roleNames: string[];
   permissions: Permission[];
@@ -39,6 +41,8 @@ type UserRow = {
   auth_source: "local" | "wechat";
   wechat_bound: boolean;
   github_bound: boolean;
+  passkey_bound: boolean;
+  passkey_count: number;
   role_ids: number[] | null;
   role_names: string[] | null;
   permissions: Permission[] | null;
@@ -67,6 +71,16 @@ export const fetchSessionUser = async (userId: number): Promise<SessionUser | nu
           FROM oauth_identities oi
           WHERE oi.user_id = u.id AND oi.provider = 'github'
         ) AS github_bound,
+        EXISTS (
+          SELECT 1
+          FROM webauthn_credentials wc
+          WHERE wc.user_id = u.id
+        ) AS passkey_bound,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM webauthn_credentials wc
+          WHERE wc.user_id = u.id
+        ), 0) AS passkey_count,
         COALESCE(array_agg(DISTINCT r.id) FILTER (WHERE r.id IS NOT NULL), '{}') AS role_ids,
         COALESCE(array_agg(DISTINCT r.name) FILTER (WHERE r.id IS NOT NULL), '{}') AS role_names,
         COALESCE(array_agg(DISTINCT p.permission) FILTER (WHERE p.permission IS NOT NULL), '{}') AS permissions
@@ -94,6 +108,8 @@ export const fetchSessionUser = async (userId: number): Promise<SessionUser | nu
     authSource: row.auth_source,
     wechatBound: row.wechat_bound,
     githubBound: row.github_bound,
+    passkeyBound: row.passkey_bound,
+    passkeyCount: row.passkey_count,
     roleIds: row.role_ids ?? [],
     roleNames: row.role_names ?? [],
     permissions: row.permissions ?? []
