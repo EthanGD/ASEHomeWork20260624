@@ -2,28 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   App as AntdApp,
   Button,
-  Calendar,
-  Card,
-  Col,
-  DatePicker,
-  Descriptions,
-  Empty,
   Form,
-  Input,
   Layout,
-  List,
   Menu,
-  Modal,
-  Row,
-  Segmented,
-  Select,
   Space,
   Spin,
-  Statistic,
-  Table,
   Tag,
-  Typography,
-  Upload
+  Typography
 } from "antd";
 import type { MenuProps, TableColumnsType, UploadProps } from "antd";
 import {
@@ -31,20 +16,41 @@ import {
   DashboardOutlined,
   DeleteOutlined,
   EditOutlined,
-  GithubOutlined,
   LogoutOutlined,
-  PlusOutlined,
-  SafetyOutlined,
   SettingOutlined,
   SolutionOutlined,
-  SoundOutlined,
   TeamOutlined,
   UserOutlined,
   WechatOutlined
 } from "@ant-design/icons";
 import dayjs, { Dayjs } from "dayjs";
 import { api, clearToken, getToken, setToken } from "./api";
+import {
+  CalendarMode,
+  PERMISSION_LABELS,
+  PRIORITY_COLORS,
+  PRIORITY_LABELS,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  formatDateTime,
+  getRangeDates,
+  hasPermission,
+  sortTasks,
+  taskTouchesDate
+} from "./appShellUtils";
 import { clientConfig } from "./config";
+import { RoleFormValues, RoleModal } from "./components/modals/RoleModal";
+import { TaskFormValues, TaskModal } from "./components/modals/TaskModal";
+import { UserFormValues, UserModal } from "./components/modals/UserModal";
+import { AccountView } from "./views/AccountView";
+import { CalendarView } from "./views/CalendarView";
+import { DashboardView } from "./views/DashboardView";
+import { LoginView } from "./views/LoginView";
+import { RolesView } from "./views/RolesView";
+import { SettingsView } from "./views/SettingsView";
+import { TasksView } from "./views/TasksView";
+import { UsersView } from "./views/UsersView";
+import { credentialToJson, fromBase64Url, toBase64Url } from "./webauthnUtils";
 import {
   AppSettings,
   DashboardSummary,
@@ -58,8 +64,6 @@ import {
 } from "./types";
 
 const { Header, Content, Sider } = Layout;
-const { TextArea, Password } = Input;
-const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
 type ViewKey =
@@ -70,102 +74,6 @@ type ViewKey =
   | "users"
   | "roles"
   | "settings";
-type CalendarMode = "month" | "week" | "3day" | "day";
-
-type TaskFormValues = {
-  title: string;
-  content: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  dateRange?: [Dayjs, Dayjs];
-};
-
-type UserFormValues = {
-  username: string | null;
-  password?: string;
-  displayName: string;
-  email: string | null;
-  status: "enabled" | "disabled";
-  roleIds: number[];
-};
-
-type RoleFormValues = {
-  name: string;
-  description: string;
-  permissions: Permission[];
-};
-
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  todo: "待处理",
-  in_progress: "进行中",
-  done: "已完成"
-};
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: "gold",
-  in_progress: "blue",
-  done: "green"
-};
-
-const PRIORITY_LABELS: Record<TaskPriority, string> = {
-  low: "低",
-  medium: "中",
-  high: "高"
-};
-
-const PRIORITY_COLORS: Record<TaskPriority, string> = {
-  low: "default",
-  medium: "orange",
-  high: "red"
-};
-
-const PERMISSION_LABELS: Record<Permission, string> = {
-  "task:view_all": "查看全部事务",
-  "task:edit_all": "编辑全部事务",
-  "task:manage_own": "管理自己的事务",
-  "user:manage": "用户管理",
-  "role:manage": "角色管理",
-  "settings:manage": "系统配置"
-};
-
-const hasPermission = (user: SessionUser | null, permission: Permission) =>
-  user?.permissions.includes(permission) ?? false;
-
-const formatDateTime = (value?: string | null) =>
-  value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "-";
-
-const getWeekStart = (value: Dayjs) =>
-  value.startOf("day").subtract((value.day() + 6) % 7, "day");
-
-const getRangeDates = (mode: CalendarMode, anchor: Dayjs) => {
-  if (mode === "day") {
-    return [anchor.startOf("day")];
-  }
-
-  if (mode === "3day") {
-    return [0, 1, 2].map((offset) => anchor.startOf("day").add(offset, "day"));
-  }
-
-  if (mode === "week") {
-    const weekStart = getWeekStart(anchor);
-    return [0, 1, 2, 3, 4, 5, 6].map((offset) => weekStart.add(offset, "day"));
-  }
-
-  return [anchor.startOf("month")];
-};
-
-const taskTouchesDate = (task: TaskRecord, date: Dayjs) => {
-  const start = dayjs(task.startAt ?? task.createdAt);
-  const end = dayjs(task.endAt ?? task.startAt ?? task.createdAt);
-  return !date.endOf("day").isBefore(start) && !date.startOf("day").isAfter(end);
-};
-
-const sortTasks = (items: TaskRecord[]) =>
-  [...items].sort(
-    (left, right) =>
-      dayjs(left.startAt ?? left.createdAt).valueOf() -
-      dayjs(right.startAt ?? right.createdAt).valueOf()
-  );
 
 function AppShellInner() {
   const { message } = AntdApp.useApp();
@@ -190,7 +98,6 @@ function AppShellInner() {
   const [taskStatusFilter, setTaskStatusFilter] = useState<"all" | TaskStatus>("all");
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [calendarAnchor, setCalendarAnchor] = useState(dayjs());
-  const [loginForm] = Form.useForm<{ username: string; password: string }>();
   const [taskForm] = Form.useForm<TaskFormValues>();
   const [userForm] = Form.useForm<UserFormValues>();
   const [roleForm] = Form.useForm<RoleFormValues>();
@@ -416,55 +323,6 @@ function AppShellInner() {
     } catch (error) {
       message.error(error instanceof Error ? error.message : "无法发起 GitHub 登录");
     }
-  };
-
-  const toBase64Url = (bytes: Uint8Array) => {
-    let binary = "";
-    bytes.forEach((b) => {
-      binary += String.fromCharCode(b);
-    });
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  };
-
-  const fromBase64Url = (input: string) => {
-    const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
-    const raw = atob(padded);
-    const out = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i += 1) {
-      out[i] = raw.charCodeAt(i);
-    }
-    return out;
-  };
-
-  const credentialToJson = (credential: PublicKeyCredential) => {
-    const response = credential.response as AuthenticatorResponse;
-    const base = {
-      id: credential.id,
-      type: credential.type,
-      rawId: toBase64Url(new Uint8Array(credential.rawId))
-    };
-
-    if ("attestationObject" in response) {
-      const att = response as AuthenticatorAttestationResponse;
-      return {
-        ...base,
-        response: {
-          clientDataJSON: toBase64Url(new Uint8Array(att.clientDataJSON)),
-          attestationObject: toBase64Url(new Uint8Array(att.attestationObject))
-        }
-      };
-    }
-
-    const ass = response as AuthenticatorAssertionResponse;
-    return {
-      ...base,
-      response: {
-        clientDataJSON: toBase64Url(new Uint8Array(ass.clientDataJSON)),
-        authenticatorData: toBase64Url(new Uint8Array(ass.authenticatorData)),
-        signature: toBase64Url(new Uint8Array(ass.signature)),
-        userHandle: ass.userHandle ? toBase64Url(new Uint8Array(ass.userHandle)) : null
-      }
-    };
   };
 
   const handlePasskeyLogin = async () => {
@@ -1137,73 +995,13 @@ function AppShellInner() {
 
   if (!currentUser) {
     return (
-      <div className="login-page">
-        <Card className="login-card">
-          <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <div>
-              <Title level={2}>语音转文字事务记录网页</Title>
-              <Text type="secondary">
-                React + Ant Design 前端、Express + TypeScript 后端、PostgreSQL
-                持久化、日历视图与微信登录。
-              </Text>
-            </div>
-
-            <Form
-              form={loginForm}
-              layout="vertical"
-              initialValues={{ username: "admin", password: "admin123" }}
-              onFinish={(values) => void handleLogin(values)}
-            >
-              <Form.Item
-                label="账号"
-                name="username"
-                rules={[{ required: true, message: "请输入账号" }]}
-              >
-                <Input placeholder="请输入账号" />
-              </Form.Item>
-              <Form.Item
-                label="密码"
-                name="password"
-                rules={[{ required: true, message: "请输入密码" }]}
-              >
-                <Password placeholder="请输入密码" />
-              </Form.Item>
-              <Space direction="vertical" style={{ width: "100%" }}>
-                <Button type="primary" htmlType="submit" loading={submitting} block>
-                  本地账号登录
-                </Button>
-                <Button
-                  icon={<WechatOutlined />}
-                  block
-                  onClick={() => void handleWechatLogin()}
-                >
-                  微信扫码登录
-                </Button>
-                <Button
-                  icon={<GithubOutlined />}
-                  block
-                  onClick={() => void handleGithubLogin()}
-                >
-                  GitHub oidc sso 登录
-                </Button>
-                <Button
-                  icon={<SafetyOutlined />}
-                  block
-                  onClick={() => void handlePasskeyLogin()}
-                >
-                  手机指纹验证登录
-                </Button>
-              </Space>
-            </Form>
-
-            <Card size="small" title="默认账号">
-              <Text>管理员：admin / admin123</Text>
-              <br />
-              <Text>员工：demo / demo123</Text>
-            </Card>
-          </Space>
-        </Card>
-      </div>
+      <LoginView
+        submitting={submitting}
+        onLogin={(values) => void handleLogin(values)}
+        onWechatLogin={() => void handleWechatLogin()}
+        onGithubLogin={() => void handleGithubLogin()}
+        onPasskeyLogin={() => void handlePasskeyLogin()}
+      />
     );
   }
 
@@ -1256,719 +1054,99 @@ function AppShellInner() {
         <Content className="app-content">
           <Spin spinning={refreshing || submitting}>
             {activeView === "dashboard" ? (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} md={12} xl={6}>
-                    <Card>
-                      <Statistic title="可见事务" value={dashboard?.total ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} md={12} xl={6}>
-                    <Card>
-                      <Statistic title="待处理" value={dashboard?.todo ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} md={12} xl={6}>
-                    <Card>
-                      <Statistic title="进行中" value={dashboard?.inProgress ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} md={12} xl={6}>
-                    <Card>
-                      <Statistic title="已完成" value={dashboard?.done ?? 0} />
-                    </Card>
-                  </Col>
-                </Row>
-
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} xl={14}>
-                    <Card
-                      title="最近事务"
-                      extra={
-                        <Button type="link" onClick={() => setActiveView("tasks")}>
-                          查看全部
-                        </Button>
-                      }
-                    >
-                      <List
-                        dataSource={filteredTasks.slice(0, 6)}
-                        locale={{ emptyText: "暂无事务" }}
-                        renderItem={(item) => (
-                          <List.Item
-                            actions={[
-                              <Button
-                                key="edit"
-                                type="link"
-                                onClick={() => openTaskModal(item)}
-                              >
-                                编辑
-                              </Button>
-                            ]}
-                          >
-                            <List.Item.Meta
-                              title={
-                                <Space>
-                                  <Text strong>{item.title}</Text>
-                                  <Tag color={STATUS_COLORS[item.status]}>
-                                    {STATUS_LABELS[item.status]}
-                                  </Tag>
-                                </Space>
-                              }
-                              description={`${formatDateTime(item.startAt)} - ${formatDateTime(item.endAt)} / ${item.createdByName}`}
-                            />
-                          </List.Item>
-                        )}
-                      />
-                    </Card>
-                  </Col>
-                  <Col xs={24} xl={10}>
-                    <Card title="集成说明">
-                      <List
-                        dataSource={[
-                          "支持本地账号登录与微信网页扫码登录结构。",
-                          "语音转文字通过后端代理调用 funASR 服务。",
-                          "事务支持月、周、3 日、日四种日历查阅方式。",
-                          "主数据已迁移到 PostgreSQL，不再以 localStorage 为主存储。"
-                        ]}
-                        renderItem={(item) => <List.Item>{item}</List.Item>}
-                      />
-                    </Card>
-                  </Col>
-                </Row>
-              </Space>
+              <DashboardView
+                dashboard={dashboard}
+                recentTasks={filteredTasks.slice(0, 6)}
+                onViewAllTasks={() => setActiveView("tasks")}
+                onEditTask={(task) => openTaskModal(task)}
+              />
             ) : null}
 
             {activeView === "account" ? (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="账号信息">
-                  <Descriptions column={{ xs: 1, md: 2 }}>
-                    <Descriptions.Item label="姓名">
-                      {currentUser.displayName}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="账号">
-                      {currentUser.username ?? "未设置账号"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="邮箱">
-                      {currentUser.email ?? "未填写"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="当前角色">
-                      {currentUser.roleNames.join("、") || "未分配角色"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="登录来源">
-                      <Tag color={currentUser.authSource === "wechat" ? "green" : "blue"}>
-                        {currentUser.authSource === "wechat" ? "微信" : "本地"}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="微信绑定状态">
-                      <Tag color={currentUser.wechatBound ? "green" : "default"}>
-                        {currentUser.wechatBound ? "已绑定" : "未绑定"}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="GitHub 绑定状态">
-                      <Tag color={currentUser.githubBound ? "green" : "default"}>
-                        {currentUser.githubBound ? "已绑定" : "未绑定"}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="指纹登录状态">
-                      <Tag color={currentUser.passkeyBound ? "green" : "default"}>
-                        {currentUser.passkeyBound ? `已绑定 ${currentUser.passkeyCount} 个` : "未绑定"}
-                      </Tag>
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
-
-                <Card title="微信扫码登录绑定">
-                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <Text>
-                      绑定后，同一个账号可以直接通过微信扫码登录，不需要再单独创建新的微信账号。
-                    </Text>
-                    <List
-                      size="small"
-                      dataSource={[
-                        "点击“绑定微信扫码登录”后，会跳转到微信扫码授权页面。",
-                        "未配置正式微信参数时，系统会自动走演示扫码绑定流程。",
-                        "如果该微信号已经绑定到其他账号，系统会直接提示绑定失败。"
-                      ]}
-                      renderItem={(item) => <List.Item>{item}</List.Item>}
-                    />
-                    <Space wrap>
-                      <Button
-                        type="primary"
-                        icon={<WechatOutlined />}
-                        onClick={() => void handleWechatBind()}
-                      >
-                        {currentUser.wechatBound ? "重新绑定微信扫码登录" : "绑定微信扫码登录"}
-                      </Button>
-                      {currentUser.wechatBound ? (
-                        <Button danger onClick={() => void handleWechatUnbind()}>
-                          解除微信绑定
-                        </Button>
-                      ) : null}
-                    </Space>
-                  </Space>
-                </Card>
-
-                <Card title="GitHub OAuth 绑定">
-                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <Text>
-                      绑定后，同一个账号可以通过 GitHub OAuth 进行登录（当前版本优先实现绑定，登录功能后续按需开启）。
-                    </Text>
-                    <List
-                      size="small"
-                      dataSource={[
-                        "点击“绑定 GitHub”后会跳转到 GitHub 授权页面。",
-                        "未配置 GitHub Client ID/Secret 时，系统会自动走演示绑定流程。",
-                        "如果该 GitHub 账号已经绑定到其他账号，会提示绑定失败。"
-                      ]}
-                      renderItem={(item) => <List.Item>{item}</List.Item>}
-                    />
-                    <Space wrap>
-                      <Button
-                        type="primary"
-                        icon={<GithubOutlined />}
-                        onClick={() => void handleGithubBind()}
-                      >
-                        {currentUser.githubBound ? "重新绑定 GitHub" : "绑定 GitHub"}
-                      </Button>
-                      {currentUser.githubBound ? (
-                        <Button danger onClick={() => void handleGithubUnbind()}>
-                          解除 GitHub 绑定
-                        </Button>
-                      ) : null}
-                    </Space>
-                  </Space>
-                </Card>
-
-                <Card title="手机指纹登录绑定">
-                  <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <Text>
-                      绑定后，可以在登录页使用手机指纹/人脸验证完成登录（需要浏览器支持 WebAuthn / Passkey）。
-                    </Text>
-                    {currentUser.passkeyBound ? (
-                      <Tag color="green">已绑定 {currentUser.passkeyCount} 个指纹凭证</Tag>
-                    ) : (
-                      <Tag color="default">未绑定</Tag>
-                    )}
-                    {passkeys.length > 0 && (
-                      <List
-                        size="small"
-                        bordered
-                        dataSource={passkeys}
-                        renderItem={(item) => (
-                          <List.Item
-                            actions={[
-                              <Button
-                                key="unbind"
-                                type="link"
-                                danger
-                                size="small"
-                                onClick={() => void handlePasskeyUnbind(item.credentialId)}
-                              >
-                                解除绑定
-                              </Button>
-                            ]}
-                          >
-                            <List.Item.Meta
-                              title={`凭证 ${item.credentialId.slice(0, 16)}...`}
-                              description={`绑定时间：${formatDateTime(item.createdAt)}`}
-                            />
-                          </List.Item>
-                        )}
-                      />
-                    )}
-                    <Space wrap>
-                      <Button
-                        type="primary"
-                        icon={<SafetyOutlined />}
-                        onClick={() => void handlePasskeyBind()}
-                      >
-                        {currentUser.passkeyBound ? "重新绑定指纹登录" : "绑定指纹登录"}
-                      </Button>
-                    </Space>
-                  </Space>
-                </Card>
-              </Space>
+              <AccountView
+                currentUser={currentUser}
+                passkeys={passkeys}
+                formatDateTime={formatDateTime}
+                onWechatBind={() => void handleWechatBind()}
+                onWechatUnbind={() => void handleWechatUnbind()}
+                onGithubBind={() => void handleGithubBind()}
+                onGithubUnbind={() => void handleGithubUnbind()}
+                onPasskeyBind={() => void handlePasskeyBind()}
+                onPasskeyUnbind={(credentialId) => void handlePasskeyUnbind(credentialId)}
+              />
             ) : null}
 
             {activeView === "tasks" ? (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card>
-                  <Row gutter={[16, 16]} align="middle">
-                    <Col xs={24} md={8}>
-                      <Input.Search
-                        placeholder="搜索标题或正文"
-                        allowClear
-                        onChange={(event) => setTaskKeyword(event.target.value)}
-                      />
-                    </Col>
-                    <Col xs={24} md={5}>
-                      <Select
-                        value={taskStatusFilter}
-                        style={{ width: "100%" }}
-                        onChange={setTaskStatusFilter}
-                        options={[
-                          { label: "全部状态", value: "all" },
-                          { label: "待处理", value: "todo" },
-                          { label: "进行中", value: "in_progress" },
-                          { label: "已完成", value: "done" }
-                        ]}
-                      />
-                    </Col>
-                    <Col xs={24} md={11} style={{ textAlign: "right" }}>
-                      <Space wrap>
-                        <Button
-                          onClick={() =>
-                            void (currentUser ? refreshData(currentUser) : Promise.resolve())
-                          }
-                        >
-                          刷新
-                        </Button>
-                        <Button
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          disabled={!canTaskCreate}
-                          onClick={() => openTaskModal()}
-                        >
-                          新建事务
-                        </Button>
-                      </Space>
-                    </Col>
-                  </Row>
-                </Card>
-                <Card>
-                  <Table
-                    rowKey="id"
-                    columns={taskColumns}
-                    dataSource={filteredTasks}
-                    pagination={{ pageSize: 8 }}
-                  />
-                </Card>
-              </Space>
+              <TasksView
+                currentUser={currentUser}
+                canTaskCreate={canTaskCreate}
+                taskStatusFilter={taskStatusFilter}
+                onTaskStatusFilterChange={setTaskStatusFilter}
+                onTaskKeywordChange={setTaskKeyword}
+                onRefresh={(user) => void refreshData(user)}
+                onCreate={() => openTaskModal()}
+                taskColumns={taskColumns}
+                tasks={filteredTasks}
+              />
             ) : null}
 
             {activeView === "calendar" ? (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card>
-                  <Row gutter={[16, 16]} justify="space-between" align="middle">
-                    <Col>
-                      <Space wrap>
-                        <Segmented<CalendarMode>
-                          value={calendarMode}
-                          onChange={(value) => setCalendarMode(value)}
-                          options={[
-                            { label: "按月", value: "month" },
-                            { label: "按周", value: "week" },
-                            { label: "按3日", value: "3day" },
-                            { label: "按日", value: "day" }
-                          ]}
-                        />
-                        <DatePicker
-                          value={calendarAnchor}
-                          onChange={(value) => value && setCalendarAnchor(value)}
-                        />
-                      </Space>
-                    </Col>
-                    <Col>
-                      <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        disabled={!canTaskCreate}
-                        onClick={() => openTaskModal()}
-                      >
-                        新建事务
-                      </Button>
-                    </Col>
-                  </Row>
-                </Card>
-
-                {calendarMode === "month" ? (
-                  <Card>
-                    <Calendar
-                      value={calendarAnchor}
-                      onPanelChange={(value) => setCalendarAnchor(value)}
-                      onSelect={(value) => setCalendarAnchor(value)}
-                      cellRender={(current) => {
-                        const dayTasks = filteredTasks.filter((task) =>
-                          taskTouchesDate(task, current)
-                        );
-                        return (
-                          <div className="calendar-cell">
-                            {dayTasks.slice(0, 3).map((task) => (
-                              <Tag
-                                className="calendar-tag"
-                                color={STATUS_COLORS[task.status]}
-                                key={`${current.valueOf()}-${task.id}`}
-                              >
-                                {task.title}
-                              </Tag>
-                            ))}
-                            {dayTasks.length > 3 ? (
-                              <Text type="secondary">+{dayTasks.length - 3} 条</Text>
-                            ) : null}
-                          </div>
-                        );
-                      }}
-                    />
-                  </Card>
-                ) : (
-                  <Row gutter={[16, 16]}>
-                    {calendarDates.map((date) => {
-                      const dateTasks = filteredTasks.filter((task) =>
-                        taskTouchesDate(task, date)
-                      );
-                      const span =
-                        calendarMode === "day" ? 24 : calendarMode === "3day" ? 8 : 6;
-                      return (
-                        <Col xs={24} md={span} key={date.toISOString()}>
-                          <Card title={date.format("MM-DD dddd")}>
-                            {dateTasks.length === 0 ? (
-                              <Empty
-                                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                                description="当天暂无事务"
-                              />
-                            ) : (
-                              <List
-                                dataSource={dateTasks}
-                                renderItem={(task) => (
-                                  <List.Item
-                                    actions={[
-                                      <Button
-                                        key="edit"
-                                        type="link"
-                                        onClick={() => openTaskModal(task)}
-                                      >
-                                        查看
-                                      </Button>
-                                    ]}
-                                  >
-                                    <List.Item.Meta
-                                      title={
-                                        <Space>
-                                          <Tag color={STATUS_COLORS[task.status]}>
-                                            {STATUS_LABELS[task.status]}
-                                          </Tag>
-                                          <Text strong>{task.title}</Text>
-                                        </Space>
-                                      }
-                                      description={`${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`}
-                                    />
-                                  </List.Item>
-                                )}
-                              />
-                            )}
-                          </Card>
-                        </Col>
-                      );
-                    })}
-                  </Row>
-                )}
-              </Space>
+              <CalendarView
+                calendarMode={calendarMode}
+                onCalendarModeChange={setCalendarMode}
+                calendarAnchor={calendarAnchor}
+                onCalendarAnchorChange={setCalendarAnchor}
+                canTaskCreate={canTaskCreate}
+                onCreate={() => openTaskModal()}
+                tasks={filteredTasks}
+                onViewTask={(task) => openTaskModal(task)}
+              />
             ) : null}
 
             {activeView === "users" && canUserManage ? (
-              <Card
-                title="用户管理"
-                extra={
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => openUserModal()}
-                  >
-                    新增用户
-                  </Button>
-                }
-              >
-                <Table
-                  rowKey="id"
-                  columns={userColumns}
-                  dataSource={users}
-                  pagination={{ pageSize: 8 }}
-                />
-              </Card>
+              <UsersView users={users} userColumns={userColumns} onCreate={() => openUserModal()} />
             ) : null}
 
             {activeView === "roles" && canRoleManage ? (
-              <Card
-                title="角色管理"
-                extra={
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => openRoleModal()}
-                  >
-                    新增角色
-                  </Button>
-                }
-              >
-                <Table
-                  rowKey="id"
-                  columns={roleColumns}
-                  dataSource={roles}
-                  pagination={false}
-                />
-              </Card>
+              <RolesView roles={roles} roleColumns={roleColumns} onCreate={() => openRoleModal()} />
             ) : null}
 
             {activeView === "settings" && canSettingsManage ? (
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card title="系统配置">
-                  <Form
-                    form={settingsForm}
-                    layout="vertical"
-                    initialValues={settings ?? undefined}
-                  >
-                    <Row gutter={[16, 16]}>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="funASR 服务地址"
-                          name={["integrations", "funasrServiceUrl"]}
-                        >
-                          <Input placeholder="例如：http://127.0.0.1:8000" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="funASR 路径"
-                          name={["integrations", "funasrApiPath"]}
-                        >
-                          <Input placeholder="/recognize" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="funASR Token"
-                          name={["integrations", "funasrToken"]}
-                        >
-                          <Input.Password placeholder="可选" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="微信 AppID"
-                          name={["integrations", "wechatAppId"]}
-                        >
-                          <Input placeholder="未配置则走演示微信登录" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="SSO 提供方"
-                          name={["integrations", "ssoProvider"]}
-                        >
-                          <Input placeholder="企业微信 / OAuth" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={12}>
-                        <Form.Item
-                          label="SSO 预留开关"
-                          name={["integrations", "ssoEnabled"]}
-                        >
-                          <Select
-                            options={[
-                              { label: "关闭", value: false },
-                              { label: "开启", value: true }
-                            ]}
-                          />
-                        </Form.Item>
-                      </Col>
-                    </Row>
-                    <Button type="primary" onClick={() => void submitSettings()}>
-                      保存配置
-                    </Button>
-                  </Form>
-                </Card>
-
-                <Card title="接入说明">
-                  <List
-                    dataSource={[
-                      "前端通过 /api 调用 Express 后端，由后端统一访问 PostgreSQL 与 funASR。",
-                      "微信扫码登录未配置 AppID/AppSecret 时，系统自动走演示回调链路。",
-                      "正式上线时建议把微信 AppSecret 放到服务端环境变量，而不是前端页面。"
-                    ]}
-                    renderItem={(item) => <List.Item>{item}</List.Item>}
-                  />
-                </Card>
-              </Space>
+              <SettingsView settings={settings} form={settingsForm} onSubmit={() => void submitSettings()} />
             ) : null}
           </Spin>
         </Content>
       </Layout>
 
-      <Modal
-        title={taskModalTarget ? "编辑事务" : "新建事务"}
+      <TaskModal
         open={taskModalOpen}
+        target={taskModalTarget}
+        form={taskForm}
+        submitting={submitting}
+        transcribing={transcribing}
+        uploadProps={uploadProps}
         onCancel={() => setTaskModalOpen(false)}
-        onOk={() => void submitTask()}
-        confirmLoading={submitting}
-        width={760}
-        destroyOnClose
-      >
-        <Form
-          form={taskForm}
-          layout="vertical"
-          initialValues={{ status: "todo", priority: "medium" }}
-        >
-          <Form.Item
-            label="标题"
-            name="title"
-            rules={[{ required: true, message: "请输入标题" }]}
-          >
-            <Input placeholder="请输入事务标题" />
-          </Form.Item>
-          <Form.Item
-            label="正文"
-            name="content"
-            rules={[{ required: true, message: "请输入事务正文" }]}
-          >
-            <TextArea rows={6} placeholder="可直接输入内容，也可上传音频转写" />
-          </Form.Item>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}>
-              <Form.Item label="状态" name="status" rules={[{ required: true }]}>
-                <Select
-                  options={[
-                    { label: "待处理", value: "todo" },
-                    { label: "进行中", value: "in_progress" },
-                    { label: "已完成", value: "done" }
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="优先级" name="priority" rules={[{ required: true }]}>
-                <Select
-                  options={[
-                    { label: "低", value: "low" },
-                    { label: "中", value: "medium" },
-                    { label: "高", value: "high" }
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="日历时间段" name="dateRange">
-                <RangePicker showTime style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Space>
-            <Upload {...uploadProps}>
-              <Button icon={<SoundOutlined />} loading={transcribing}>
-                上传音频并调用 funASR
-              </Button>
-            </Upload>
-            <Text type="secondary">
-              支持在编辑事务时直接把转写结果追加到正文
-            </Text>
-          </Space>
-        </Form>
-      </Modal>
+        onSubmit={() => void submitTask()}
+      />
 
-      <Modal
-        title={userModalTarget ? "编辑用户" : "新增用户"}
+      <UserModal
         open={userModalOpen}
+        target={userModalTarget}
+        roles={roles}
+        form={userForm}
+        submitting={submitting}
         onCancel={() => setUserModalOpen(false)}
-        onOk={() => void submitUser()}
-        confirmLoading={submitting}
-        destroyOnClose
-      >
-        <Form
-          form={userForm}
-          layout="vertical"
-          initialValues={{ status: "enabled", roleIds: [] }}
-        >
-          <Form.Item
-            label="账号"
-            name="username"
-            rules={[{ required: true, message: "请输入账号" }]}
-          >
-            <Input
-              placeholder="请输入账号"
-              disabled={userModalTarget?.authSource === "wechat"}
-            />
-          </Form.Item>
-          <Form.Item
-            label={userModalTarget ? "重置密码" : "初始密码"}
-            name="password"
-            rules={
-              userModalTarget ? [] : [{ required: true, message: "请输入密码" }]
-            }
-          >
-            <Password
-              placeholder={
-                userModalTarget ? "不填写则保持原密码" : "请输入初始密码"
-              }
-            />
-          </Form.Item>
-          <Form.Item
-            label="姓名"
-            name="displayName"
-            rules={[{ required: true, message: "请输入姓名" }]}
-          >
-            <Input placeholder="请输入姓名" />
-          </Form.Item>
-          <Form.Item label="邮箱" name="email">
-            <Input placeholder="可选" />
-          </Form.Item>
-          <Form.Item label="状态" name="status" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: "启用", value: "enabled" },
-                { label: "禁用", value: "disabled" }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            label="角色"
-            name="roleIds"
-            rules={[{ required: true, message: "请至少选择一个角色" }]}
-          >
-            <Select
-              mode="multiple"
-              options={roles.map((role) => ({ label: role.name, value: role.id }))}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSubmit={() => void submitUser()}
+      />
 
-      <Modal
-        title={roleModalTarget ? "编辑角色" : "新增角色"}
+      <RoleModal
         open={roleModalOpen}
+        target={roleModalTarget}
+        form={roleForm}
+        submitting={submitting}
         onCancel={() => setRoleModalOpen(false)}
-        onOk={() => void submitRole()}
-        confirmLoading={submitting}
-        destroyOnClose
-      >
-        <Form
-          form={roleForm}
-          layout="vertical"
-          initialValues={{ permissions: ["task:manage_own"] }}
-        >
-          <Form.Item
-            label="角色名称"
-            name="name"
-            rules={[{ required: true, message: "请输入角色名称" }]}
-          >
-            <Input placeholder="例如：销售经理" />
-          </Form.Item>
-          <Form.Item label="描述" name="description">
-            <TextArea rows={4} placeholder="请输入角色描述" />
-          </Form.Item>
-          <Form.Item
-            label="权限"
-            name="permissions"
-            rules={[{ required: true, message: "请至少选择一个权限" }]}
-          >
-            <Select
-              mode="multiple"
-              options={Object.entries(PERMISSION_LABELS).map(([value, label]) => ({
-                label,
-                value
-              }))}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSubmit={() => void submitRole()}
+      />
     </Layout>
   );
 }

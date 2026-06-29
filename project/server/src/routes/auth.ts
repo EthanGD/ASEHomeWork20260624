@@ -41,6 +41,24 @@ type LoginRow = {
   deleted: boolean;
 };
 
+const resolveRequestOrigin = (request: { headers: Record<string, string | string[] | undefined> }) => {
+  const forwardedOrigin = request.headers["x-forwarded-origin"];
+  if (typeof forwardedOrigin === "string") {
+    return forwardedOrigin;
+  }
+  if (Array.isArray(forwardedOrigin) && forwardedOrigin[0]) {
+    return forwardedOrigin[0];
+  }
+  const origin = request.headers.origin;
+  if (typeof origin === "string") {
+    return origin;
+  }
+  if (Array.isArray(origin) && origin[0]) {
+    return origin[0];
+  }
+  return undefined;
+};
+
 export const createAuthRouter = () => {
   const router = Router();
 
@@ -120,8 +138,8 @@ export const createAuthRouter = () => {
     response.json({ user: request.user });
   });
 
-  router.post("/passkey/options", async (_request, response) => {
-    response.json(await createPasskeyLoginOptions(_request.headers.origin));
+  router.post("/passkey/options", async (request, response) => {
+    response.json(await createPasskeyLoginOptions(resolveRequestOrigin(request)));
   });
 
   /*

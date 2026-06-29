@@ -20,6 +20,24 @@ import {
 } from "../services/passkey.js";
 import { sendError } from "../utils/http.js";
 
+const resolveRequestOrigin = (request: AuthenticatedRequest) => {
+  const forwardedOrigin = request.headers["x-forwarded-origin"];
+  if (typeof forwardedOrigin === "string") {
+    return forwardedOrigin;
+  }
+  if (Array.isArray(forwardedOrigin) && forwardedOrigin[0]) {
+    return forwardedOrigin[0];
+  }
+  const origin = request.headers.origin;
+  if (typeof origin === "string") {
+    return origin;
+  }
+  if (Array.isArray(origin) && origin[0]) {
+    return origin[0];
+  }
+  return undefined;
+};
+
 export const createAccountRouter = () => {
   const router = Router();
 
@@ -118,7 +136,7 @@ export const createAccountRouter = () => {
     requireAuth,
     async (request: AuthenticatedRequest, response) => {
       const user = request.user!;
-      response.json(await createPasskeyRegisterOptions(user.id, user.username, request.headers.origin));
+      response.json(await createPasskeyRegisterOptions(user.id, user.username, resolveRequestOrigin(request)));
     }
   );
 
@@ -152,7 +170,12 @@ export const createAccountRouter = () => {
     requireAuth,
     async (request: AuthenticatedRequest, response) => {
       const user = request.user!;
-      const { credentialId } = request.params;
+      const credentialParam = request.params.credentialId;
+      const credentialId = Array.isArray(credentialParam) ? credentialParam[0] : credentialParam;
+      if (!credentialId) {
+        sendError(response, 400, "credentialId 缺失");
+        return;
+      }
       const deleted = await deletePasskey(user.id, credentialId);
       if (!deleted) {
         sendError(response, 404, "指纹凭证不存在");

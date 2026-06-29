@@ -7,6 +7,23 @@ import { bindGithubToUser, buildGithubBindRedirect, buildGithubAuthUrl, buildGit
 import { createPasskeyLoginOptions, verifyPasskeyLogin } from "../services/passkey.js";
 import { bindWechatToUser, buildWechatAuthUrl, buildWechatBindRedirect, buildWechatRedirect, createWechatUserAndRedirect, getMockWechatProfile, parseWechatState, signWechatState } from "../services/wechat.js";
 import { sanitizeUser, sendError } from "../utils/http.js";
+const resolveRequestOrigin = (request) => {
+    const forwardedOrigin = request.headers["x-forwarded-origin"];
+    if (typeof forwardedOrigin === "string") {
+        return forwardedOrigin;
+    }
+    if (Array.isArray(forwardedOrigin) && forwardedOrigin[0]) {
+        return forwardedOrigin[0];
+    }
+    const origin = request.headers.origin;
+    if (typeof origin === "string") {
+        return origin;
+    }
+    if (Array.isArray(origin) && origin[0]) {
+        return origin[0];
+    }
+    return undefined;
+};
 export const createAuthRouter = () => {
     const router = Router();
     router.post("/login", async (request, response) => {
@@ -71,9 +88,18 @@ export const createAuthRouter = () => {
     router.get("/me", requireAuth, async (request, response) => {
         response.json({ user: request.user });
     });
-    router.post("/passkey/options", async (_request, response) => {
-        response.json(await createPasskeyLoginOptions(_request.headers.origin));
+    router.post("/passkey/options", async (request, response) => {
+        response.json(await createPasskeyLoginOptions(resolveRequestOrigin(request)));
     });
+    /*
+    Account info: The credential.id (9pX_Z8NyqfRBxB7RLIWe6Q) IS the account identifier. The server looks up this ID in the webauthn_credentials table, which is bound to user_id=1. You don't need to send the username — the credential ID is a unique key that maps to the user.
+  
+  Device info: The authenticatorData contains the RP ID hash and flags (user presence, user verification). The server validates the RP ID matches the expected domain — this implicitly verifies the device.
+  
+  Why verification was failing: The authenticator returns the signature in DER format (ASN.1 SEQUENCE wrapping, ~70 bytes), but crypto.subtle.verify expects raw format (r||s concatenated, exactly 64 bytes). I added a derToRaw() function to convert it. This is the root cause.
+  
+  账户信息：credential.id（9pX_Z8NyqfRBxB7RLIWe6Q）是账户标识符。服务器会在绑定至 user_id =1的 webauthn_credentials 表中查询该ID。无需发送用户名——凭证ID是唯一可映射到用户的标识键。设备信息：authenticatorData包含RP ID哈希值及标志位（用户在线状态、用户验证状态）。服务器会验证RP ID是否与预期域名匹配，从而隐式确认设备身份。验证失败原因：认证器返回DER格式的签名（采用 ASN .1序列封装方式，约70字节），而crypto.subtle_verify要求原始格式（字符串拼接结果，精确64字节）。我添加了derToRaw()函数进行转换，这正是根本原因。
+    */
     router.post("/passkey/verify", async (request, response) => {
         try {
             const { userId } = await verifyPasskeyLogin(request.body.credential);

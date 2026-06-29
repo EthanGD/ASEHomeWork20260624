@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
+$ApiGatewayDir = Join-Path $ProjectRoot "apiGateWay"
 $ServerDir = Join-Path $ProjectRoot "server"
 $ClientDir = Join-Path $ProjectRoot "client"
 $SchemaDir = Join-Path $ProjectRoot "database\schema"
@@ -76,6 +77,21 @@ function Build-Server {
     node ".\node_modules\typescript\bin\tsc" -p tsconfig.json
     if ($LASTEXITCODE -ne 0) {
       throw "后端编译失败"
+    }
+  }
+}
+
+function Build-ApiGateway {
+  Write-Step "2/5 编译 apiGateWay"
+  Invoke-InDir $ApiGatewayDir {
+    $tscLocal = ".\node_modules\typescript\bin\tsc"
+    if (Test-Path $tscLocal) {
+      node $tscLocal -p tsconfig.json
+    } else {
+      node (Join-Path $ServerDir ".\node_modules\typescript\bin\tsc") -p tsconfig.json
+    }
+    if ($LASTEXITCODE -ne 0) {
+      throw "apiGateWay 编译失败"
     }
   }
 }
@@ -166,6 +182,7 @@ function Sync-DatabaseToTest([hashtable]$LocalDb, [hashtable]$TestDb) {
 function Start-Services {
   Write-Step "5/5 启动前后端"
 
+  Start-Process -FilePath "node" -ArgumentList "dist/index.js" -WorkingDirectory $ApiGatewayDir -WindowStyle Normal
   Start-Process -FilePath "node" -ArgumentList "dist/index.js" -WorkingDirectory $ServerDir -WindowStyle Normal
   Start-Process -FilePath "node" -ArgumentList ".\node_modules\vite\bin\vite.js --host 0.0.0.0 --port 5175 --strictPort" -WorkingDirectory $ClientDir -WindowStyle Normal
 }
@@ -187,6 +204,7 @@ if (-not $SyncConfig -or -not $SyncConfig.TestDb) {
 }
 
 Run-GitPull
+Build-ApiGateway
 Build-Server
 if ($InitLocalDb) {
   Init-LocalDatabase $localDb

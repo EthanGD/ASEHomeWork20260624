@@ -4,8 +4,25 @@ import { config } from "../config.js";
 import { query } from "../db.js";
 import { buildGithubAuthUrl, fetchUserIdentities, signGithubState, unbindGithubFromUser } from "../services/github.js";
 import { buildWechatAuthUrl, signWechatState } from "../services/wechat.js";
-import { createPasskeyRegisterOptions, verifyAndBindPasskey } from "../services/passkey.js";
+import { createPasskeyRegisterOptions, verifyAndBindPasskey, listPasskeys, deletePasskey } from "../services/passkey.js";
 import { sendError } from "../utils/http.js";
+const resolveRequestOrigin = (request) => {
+    const forwardedOrigin = request.headers["x-forwarded-origin"];
+    if (typeof forwardedOrigin === "string") {
+        return forwardedOrigin;
+    }
+    if (Array.isArray(forwardedOrigin) && forwardedOrigin[0]) {
+        return forwardedOrigin[0];
+    }
+    const origin = request.headers.origin;
+    if (typeof origin === "string") {
+        return origin;
+    }
+    if (Array.isArray(origin) && origin[0]) {
+        return origin[0];
+    }
+    return undefined;
+};
 export const createAccountRouter = () => {
     const router = Router();
     router.get("/", requireAuth, async (request, response) => {
@@ -73,7 +90,7 @@ export const createAccountRouter = () => {
     });
     router.post("/passkey/register/options", requireAuth, async (request, response) => {
         const user = request.user;
-        response.json(await createPasskeyRegisterOptions(user.id, user.username, request.headers.origin));
+        response.json(await createPasskeyRegisterOptions(user.id, user.username, resolveRequestOrigin(request)));
     });
     router.post("/passkey/register/verify", requireAuth, async (request, response) => {
         const user = request.user;
@@ -85,6 +102,26 @@ export const createAccountRouter = () => {
             const message = error instanceof Error ? error.message : "绑定指纹登录失败";
             sendError(response, 400, message);
         }
+    });
+    router.get("/passkey/list", requireAuth, async (request, response) => {
+        const user = request.user;
+        const passkeys = await listPasskeys(user.id);
+        response.json({ passkeys });
+    });
+    router.delete("/passkey/:credentialId", requireAuth, async (request, response) => {
+        const user = request.user;
+        const credentialParam = request.params.credentialId;
+        const credentialId = Array.isArray(credentialParam) ? credentialParam[0] : credentialParam;
+        if (!credentialId) {
+            sendError(response, 400, "credentialId 缺失");
+            return;
+        }
+        const deleted = await deletePasskey(user.id, credentialId);
+        if (!deleted) {
+            sendError(response, 404, "指纹凭证不存在");
+            return;
+        }
+        response.json({ success: true });
     });
     return router;
 };

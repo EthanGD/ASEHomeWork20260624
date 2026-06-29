@@ -7,9 +7,11 @@ import {
   TaskRecord,
   User
 } from "./types";
+import { clientConfig } from "./config";
 
 const TOKEN_KEY = "voice-task-token";
 const API_BASE_URL = "";
+const GATEWAY_PATH = "/apiGateWay";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string) => localStorage.setItem(TOKEN_KEY, token);
@@ -20,20 +22,84 @@ const DEBUG_SESSION_ID = "login-auth-failure";
 
 const dbgReport = async (event: Record<string, unknown>) => {
   try {
+    const payload = {
+      ts: Date.now(),
+      sessionId: DEBUG_SESSION_ID,
+      ...event
+    };
+
+    const token = getToken();
+    const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
+    if (clientConfig.useApiGateWay) {
+      await fetch(`${API_BASE_URL}${GATEWAY_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "/__dbg/event",
+          method: "POST",
+          payload,
+          header: {
+            "Content-Type": "application/json",
+            ...authHeader
+          },
+          query: {}
+        })
+      });
+      return;
+    }
+
     await fetch(`${API_BASE_URL}/__dbg/event`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...authHeader
       },
-      body: JSON.stringify({
-        ts: Date.now(),
-        sessionId: DEBUG_SESSION_ID,
-        ...event
-      })
+      body: JSON.stringify(payload)
     });
   } catch {}
 };
 // #endregion debug-point login-auth-failure-client
+
+const safeJsonParse = (input: string) => {
+  try {
+    return JSON.parse(input) as unknown;
+  } catch {
+    return null;
+  }
+};
+
+const buildQueryObject = (url: URL) => {
+  const query: Record<string, string> = {};
+  url.searchParams.forEach((value, key) => {
+    query[key] = value;
+  });
+  return query;
+};
+
+const buildHeaderObject = (headers: Headers) => {
+  const header: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    header[key] = value;
+  });
+  if (typeof window !== "undefined" && !header["x-forwarded-origin"]) {
+    header["x-forwarded-origin"] = window.location.origin;
+  }
+  return header;
+};
+
+const shouldUseGatewayFor = (input: string, init: RequestInit) => {
+  if (!clientConfig.useApiGateWay) {
+    return false;
+  }
+  if (init.body instanceof FormData) {
+    return false;
+  }
+  if (input.startsWith(GATEWAY_PATH)) {
+    return false;
+  }
+  return true;
+};
 
 async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -49,10 +115,38 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${input}`, {
-      ...init,
-      headers
-    });
+    if (shouldUseGatewayFor(input, init)) {
+      const method = (init.method || "GET").toUpperCase();
+      const url = new URL(input, window.location.origin);
+      const query = buildQueryObject(url);
+
+      let payload: unknown = undefined;
+      if (init.body) {
+        const raw = String(init.body);
+        payload = headers.get("Content-Type")?.includes("application/json")
+          ? safeJsonParse(raw) ?? raw
+          : raw;
+      }
+
+      const header = buildHeaderObject(headers);
+
+      response = await fetch(`${API_BASE_URL}${GATEWAY_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: url.pathname,
+          method,
+          payload,
+          header,
+          query
+        })
+      });
+    } else {
+      response = await fetch(`${API_BASE_URL}${input}`, {
+        ...init,
+        headers
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "network error";
     void dbgReport({
@@ -71,7 +165,7 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
       side: "client",
       kind: "http_error",
       url: `${API_BASE_URL}${input}`,
-      method: init.method ?? "GET",
+      method: init.method ?? "POST",
       status: response.status,
       message: payload?.message ?? "请求失败"
     });
