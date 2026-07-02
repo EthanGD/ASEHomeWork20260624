@@ -3999,3 +3999,14 @@
 {"ts":1782741144364,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782741144342,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/users","method":"GET","status":200}}
 {"ts":1782741144385,"sessionId":"server-local","side":"server","kind":"http","method":"GET","path":"/","status":200,"durationMs":3,"origin":null,"host":"127.0.0.1:3002"}
 {"ts":1782741144412,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782741144386,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/settings","method":"GET","status":200}}
+{"ts":1782744150087,"sessionId":"server-local","side":"server","kind":"http","method":"POST","path":"/","status":201,"durationMs":149,"origin":null,"host":"127.0.0.1:3002"}
+{"ts":1782744150101,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744150091,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/users","method":"POST","status":201}}
+{"ts":1782744150134,"sessionId":"server-local","side":"server","kind":"http","method":"GET","path":"/","status":200,"durationMs":10,"origin":null,"host":"127.0.0.1:3002"}
+{"ts":1782744150164,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744150155,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/tasks","method":"GET","status":200}}
+{"ts":1782744150187,"sessionId":"server-local","side":"server","kind":"http","method":"GET","path":"/","status":200,"durationMs":61,"origin":null,"host":"127.0.0.1:3002"}
+{"ts":1782744150197,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744150190,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/roles","method":"GET","status":200}}
+{"ts":1782744152168,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744152144,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/dashboard","method":"GET","status":200}}
+{"ts":1782744152189,"sessionId":"server-local","side":"server","kind":"http","method":"GET","path":"/","status":200,"durationMs":3,"origin":null,"host":"127.0.0.1:3002"}
+{"ts":1782744152196,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744152191,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/users","method":"GET","status":200}}
+{"ts":1782744152221,"sessionId":"server-local","side":"server","kind":"http","method":"GET","path":"/","status":200,"durationMs":5,"origin":null,"host":"127.0.0.1:3002"}
+{"ts":1782744152228,"sessionId":"server-local","side":"client","kind":"event","payload":{"ts":1782744152223,"sessionId":"login-auth-failure","side":"client","kind":"http_ok","url":"/api/settings","method":"GET","status":200}}
